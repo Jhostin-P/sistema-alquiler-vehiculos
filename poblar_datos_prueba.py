@@ -1,27 +1,6 @@
 
 """
 Script de poblamiento MASIVO de datos de prueba para el Sistema de Alquiler de Vehículos.
-
-A diferencia de 'poblar_datos_prueba.py' (que registra unos pocos elementos de ejemplo),
-este script genera una carga de datos realista y ejercita TODAS las funcionalidades
-del sistema:
-
-  - CRUD completo de vehículos (crear, listar, actualizar, eliminar)
-  - CRUD completo de clientes (crear, listar, actualizar, eliminar)
-  - Ordenamiento de vehículos por tarifa (Quick Sort y Burbuja)
-  - Ordenamiento de clientes por nombre (Burbuja)
-  - Búsqueda lineal de vehículos por placa
-  - Búsqueda binaria de vehículos por tarifa
-  - Búsqueda lineal de clientes por cédula
-  - Generación de contratos de alquiler (solicitar_alquiler)
-  - Cola de espera FIFO cuando no hay stock disponible (encolar / atender_siguiente_en_espera)
-  - Pila LIFO para deshacer el último contrato (deshacer_ultimo_contrato)
-  - Finalización de contratos (devolución de vehículos)
-  - Registro de mantenimientos (lista enlazada) e historial por vehículo
-
-Al ejecutarlo se borra la base de datos anterior (alquiler_vehiculos.db) para partir
-de un estado limpio, ya que placas y cédulas son únicas y una segunda ejecución sobre
-los mismos datos provocaría errores de restricción UNIQUE.
 """
 
 import os
