@@ -36,7 +36,6 @@ El objetivo principal del trabajo fue aplicar los temas vistos en clase de estru
 ## Archivos del proyecto
 
 - `sistema_alquiler_vehiculos.py`: el programa principal, con toda la lógica y la interfaz
-- `poblar_datos_prueba_masivo.py`: script para cargar una cantidad grande de vehículos y clientes de prueba, y probar todas las funciones del sistema
 
 ## Cómo ejecutarlo
 
@@ -55,7 +54,3 @@ pip install customtkinter
 python sistema_alquiler_vehiculos.py
 ```
 
-Si quieren probar el sistema con datos ya cargados (vehículos, clientes, contratos, etc.), pueden correr antes:
-```
-python poblar_datos_prueba_masivo.py
-```
