@@ -573,6 +573,17 @@ class BaseDatos:                                    # Clase responsable del mane
                 FOREIGN KEY (id_vehiculo) REFERENCES vehiculos(id)
             );
         """)                                        # Crea la tabla para almacenar la bitácora de mantenimientos asociados a cada carro
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS espera (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                id_cliente INTEGER NOT NULL,
+                categoria TEXT NOT NULL,
+                dias INTEGER NOT NULL,
+                con_seguro INTEGER NOT NULL DEFAULT 0,
+                fecha_solicitud TEXT NOT NULL,
+                FOREIGN KEY (id_cliente) REFERENCES clientes(id)
+            );
+        """)                                        # Crea la tabla que guarda a los clientes en la lista de espera para que no se pierda al cerrar el programa
 
         self.conexion.commit()                      # Guarda físicamente todos los cambios de estructura en el archivo de base de datos
 
@@ -690,6 +701,42 @@ class BaseDatos:                                    # Clase responsable del mane
         
         self.conexion.commit()                      # Confirma la transacción en el disco
 
+    # ---------------- CRUD: LISTA DE ESPERA ----------------
+    def crear_espera(self, solicitud):              # Guarda en la base de datos una solicitud que entró a la lista de espera
+
+        cursor = self.conexion.cursor()             # Abre un cursor para SQL
+        cursor.execute("""
+            INSERT INTO espera (id_cliente, categoria, dias, con_seguro, fecha_solicitud)
+            VALUES (?, ?, ?, ?, ?)
+        """, (solicitud["id_cliente"], solicitud["categoria"], solicitud["dias"],
+              int(solicitud["con_seguro"]), solicitud["fecha_solicitud"])) # Inserta la solicitud completa
+        self.conexion.commit()                      # Confirma la transacción en el disco
+        return cursor.lastrowid                     # Retorna el ID generado para poder borrarla luego al atenderla
+
+    def leer_espera(self):                          # Recupera todas las solicitudes en espera, en el mismo orden en que llegaron
+
+        cursor = self.conexion.cursor()             # Abre un cursor de consulta
+        cursor.execute("""
+            SELECT id, id_cliente, categoria, dias, con_seguro, fecha_solicitud
+            FROM espera ORDER BY id
+        """)                                        # Ordena por id para respetar el orden FIFO original
+        filas = cursor.fetchall()                   # Recupera todas las filas encontradas
+
+        return [{                                   # Reconstruye cada fila como el mismo diccionario que usa la Cola en memoria
+            "id_registro": id_reg,
+            "id_cliente": id_cliente,
+            "categoria": categoria,
+            "dias": dias,
+            "con_seguro": bool(con_seguro),
+            "fecha_solicitud": fecha_solicitud,
+        } for id_reg, id_cliente, categoria, dias, con_seguro, fecha_solicitud in filas]
+
+    def eliminar_espera(self, id_registro):         # Elimina una solicitud de la lista de espera una vez que ya fue atendida
+
+        cursor = self.conexion.cursor()             # Abre un cursor para SQL
+        cursor.execute("DELETE FROM espera WHERE id=?", (id_registro,)) # Borra únicamente ese registro por su ID
+        self.conexion.commit()                      # Confirma la transacción en el disco
+
     # ---------------- CRUD: CLIENTES ----------------
     def crear_cliente(self, cliente):               # Operación CREATE: Registra un nuevo cliente en la base de datos
 
@@ -786,6 +833,9 @@ class GestorAlquiler:                               # Clase principal controlado
         self.cola_espera = Cola()                   # Inicializa la cola de espera FIFO para procesar clientes sin vehículos disponibles
         self.pila_deshacer_contratos = Pila()       # Inicializa la pila LIFO para permitir revertir transacciones de alquiler recientes
 
+        for solicitud in self.bd.leer_espera():     # Recupera las solicitudes que quedaron pendientes en la base de datos de una sesión anterior
+            self.cola_espera.encolar(solicitud)     # Las vuelve a encolar respetando el mismo orden en que se guardaron (FIFO)
+
     # ---------------- VEHICULOS ----------------
     def registrar_vehiculo(self, tipo, placa, marca, modelo, anio, tarifa_diaria, atributo_extra): # Flujo de negocio para dar de alta autos
 
@@ -857,13 +907,15 @@ class GestorAlquiler:                               # Clase principal controlado
     def solicitar_alquiler(self, id_cliente, categoria, dias, con_seguro=False): # Intenta alquilar un auto o lo encola si no hay stock
         disponibles = self.vehiculos_disponibles_por_categoria(categoria) # Busca vehículos desocupados que pertenezcan a la categoría pedida
         if not disponibles:                         # Si no existe stock disponible para el alquiler en este momento
-            self.cola_espera.encolar({              # Agrega un diccionario con la solicitud al final de la cola de espera
+            solicitud = {                           # Arma el diccionario con los datos de la solicitud
                 "id_cliente": id_cliente,
                 "categoria": categoria,
                 "dias": dias,
                 "con_seguro": con_seguro,
                 "fecha_solicitud": date.today().isoformat(),
-            })
+            }
+            solicitud["id_registro"] = self.bd.crear_espera(solicitud) # Guarda la solicitud en la base de datos para que no se pierda al cerrar el programa
+            self.cola_espera.encolar(solicitud)     # Agrega la misma solicitud al final de la cola de espera en memoria
             return None, "No hay vehículos disponibles. Cliente agregado a la lista de espera." # Retorna mensaje de que se encoló la petición
                                                     
         vehiculo = disponibles[0]                   # Si sí hay disponibles, toma el primer auto libre
@@ -882,6 +934,7 @@ class GestorAlquiler:                               # Clase principal controlado
             return None, f"Aún no hay vehículos de categoría '{solicitud['categoria']}' disponibles." # Retorna mensaje de rechazo temporal
         
         solicitud = self.cola_espera.desencolar()   # Saca definitivamente la solicitud de la cola al confirmarse que se le puede atender
+        self.bd.eliminar_espera(solicitud["id_registro"]) # Borra la solicitud de la base de datos porque ya va a ser atendida
         vehiculo = disponibles[0]                   # Toma el auto de esa categoría que se encuentra disponible
         contrato = self._crear_contrato(solicitud["id_cliente"], vehiculo, solicitud["dias"], solicitud["con_seguro"]) # Genera el contrato para el cliente
 
