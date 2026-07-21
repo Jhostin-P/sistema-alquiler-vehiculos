@@ -1,4 +1,4 @@
-# Sistema de Alquiler de Vehículos - RentaCar
+# Sistema de Alquiler de Vehículos - RentCar
 
 Proyecto desarrollado para la materia de Lenguaje de Programación II, tercer semestre de la carrera de Ingeniería en Ciencias de la Computación, Universidad Agraria del Ecuador.
 
