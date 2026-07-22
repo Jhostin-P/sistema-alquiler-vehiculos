@@ -208,6 +208,28 @@ class Cola:                                 # Define la clase Cola
 
         return resultado                    # Retorna la lista resultante
 
+    def extraer_primero_que_cumpla(self, condicion):  # Recorre la cola desde el frente y saca al primer cliente que ya se pueda atender
+        """Busca desde el frente el primer elemento que cumpla 'condicion' y lo extrae sin
+        alterar el orden relativo de los demás clientes en espera. Evita que un cliente al
+        frente bloquee a otro más atrás cuya categoría sí tiene stock disponible. O(n)."""
+
+        anterior = None                     # Guarda el nodo previo al que se está revisando (para poder desconectarlo)
+        actual = self.frente                # Empieza el recorrido desde el frente, respetando el orden de llegada
+
+        while actual is not None:           # Recorre la cola nodo por nodo
+            if condicion(actual.dato):      # Si este cliente ya se puede atender (hay stock de su categoría)
+                if anterior is None:        # Si es justo el primero de la cola
+                    self.frente = actual.siguiente # El frente pasa a ser el siguiente nodo
+                else:                       # Si está en medio o al final de la cola
+                    anterior.siguiente = actual.siguiente # El nodo anterior salta directo al siguiente, desconectando a 'actual'
+                if actual is self.final:    # Si el nodo extraído era el último de la cola
+                    self.final = anterior   # El nuevo final pasa a ser el nodo anterior
+                self._tamano -= 1           # Descuenta el elemento retirado del tamaño total
+                return actual.dato          # Retorna el dato del cliente que fue atendido
+            anterior = actual               # Avanza el puntero anterior al nodo actual
+            actual = actual.siguiente       # Avanza al siguiente nodo de la cola
+        return None                         # Ningún cliente en espera cumple la condición todavía
+
     def __len__(self):                      # Permite usar len() directamente en la cola
         return self._tamano                 # Retorna el número de elementos acumulado en el tamaño
 
@@ -922,20 +944,20 @@ class GestorAlquiler:                               # Clase principal controlado
         contrato = self._crear_contrato(id_cliente, vehiculo, dias, con_seguro) # Genera y registra el contrato de alquiler correspondientemente
         return contrato, f"Alquiler registrado con el vehículo {vehiculo.placa}." # Retorna el contrato creado y un mensaje de confirmación
 
-    def atender_siguiente_en_espera(self):          # Procesa la solicitud al frente de la cola de espera
+    def atender_siguiente_en_espera(self):          # Atiende al primer cliente en espera cuya categoría ya tenga stock disponible
 
         if self.cola_espera.esta_vacia():           # Verifica si no existen personas esperando turno
             return None, "No hay clientes en la lista de espera." # Retorna mensaje de lista vacía
-        
-        solicitud = self.cola_espera.ver_frente()   # Revisa los datos de la solicitud al frente de la cola sin sacarla todavía
-        disponibles = self.vehiculos_disponibles_por_categoria(solicitud["categoria"]) # Revisa si ya se desocupó un carro de esa categoría
 
-        if not disponibles:                         # Si sigue sin haber carros libres en esa categoría
-            return None, f"Aún no hay vehículos de categoría '{solicitud['categoria']}' disponibles." # Retorna mensaje de rechazo temporal
-        
-        solicitud = self.cola_espera.desencolar()   # Saca definitivamente la solicitud de la cola al confirmarse que se le puede atender
+        solicitud = self.cola_espera.extraer_primero_que_cumpla( # Recorre la cola en orden de llegada
+            lambda s: len(self.vehiculos_disponibles_por_categoria(s["categoria"])) > 0 # y se detiene en el primero cuya categoría sí tiene un vehículo libre
+        )                                            # (así un cliente que pide una categoría agotada ya no bloquea a los que están detrás de él)
+
+        if solicitud is None:                       # Si nadie en toda la cola tiene todavía un vehículo disponible de su categoría
+            return None, "Ningún cliente en espera tiene por ahora un vehículo disponible de su categoría." # Retorna mensaje de rechazo temporal
+
         self.bd.eliminar_espera(solicitud["id_registro"]) # Borra la solicitud de la base de datos porque ya va a ser atendida
-        vehiculo = disponibles[0]                   # Toma el auto de esa categoría que se encuentra disponible
+        vehiculo = self.vehiculos_disponibles_por_categoria(solicitud["categoria"])[0] # Toma el primer vehículo libre de esa categoría
         contrato = self._crear_contrato(solicitud["id_cliente"], vehiculo, solicitud["dias"], solicitud["con_seguro"]) # Genera el contrato para el cliente
 
         return contrato, f"Cliente atendido de la lista de espera con el vehículo {vehiculo.placa}." # Confirma el proceso de alquiler
